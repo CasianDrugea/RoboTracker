@@ -1,6 +1,6 @@
 #include <Arduino.h>
 
-// --- CONFIGURARE PINI ---
+
 const int right_fr = 9; 
 const int left_fr  = 3; 
 const int right_bk = 2; 
@@ -21,7 +21,7 @@ volatile StareRobot regimCurent = STAI;
 int vitezaGlobala = 230; 
 unsigned long timerSpecial = 0;
 
-// --- CALIBRARE CURBĂ 90 GRADE ---
+
 const unsigned long DURATA_90_CURBA = 2800; 
 const float COEFICIENT_CURBA = 0.15; 
 
@@ -29,7 +29,7 @@ void stopMotoare();
 void executaMiscare(int vr_f, int vr_b, int vl_f, int vl_b);
 void proceseazaTasta(char tasta);
 
-// --- ISR: FRÂNĂ HARDWARE ASINCRONĂ ---
+
 ISR(PCINT2_vect) {
     if (PIND & _BV(PIND6)) { 
         pulse_start = micros();
@@ -37,7 +37,6 @@ ISR(PCINT2_vect) {
         unsigned long durata = micros() - pulse_start;
         distanta_reala = durata / 58;
         
-        // Protecția acționează la mersul înainte sau în viraje
         if (regimCurent == INAINTE || regimCurent == TURN_L || regimCurent == TURN_R) {
             if (distanta_reala > 0 && distanta_reala < CONST_DISTANCE) {
                 stop_de_urgenta = true; 
@@ -66,27 +65,26 @@ void setup() {
 }
 
 void loop() {
-    // 1. Refresh Senzor Ultrasonic
+
     digitalWrite(TRIG_PIN, LOW); 
     delayMicroseconds(2);
     digitalWrite(TRIG_PIN, HIGH); 
     delayMicroseconds(10);
     digitalWrite(TRIG_PIN, LOW);
 
-    // 2. Gestionare Siguranță
+
     if (stop_de_urgenta && (regimCurent != STAI && regimCurent != INAPOI)) {
         regimCurent = STAI;
         digitalWrite(LED, HIGH);
         Serial.println("!!! BLOCAJ: Obstacol detectat !!!");
     }
 
-    // 3. Citire Comenzi UART
+
     if (Serial.available() > 0) {
         char c = Serial.read();
         if (c != '\n' && c != '\r') proceseazaTasta(c);
     }
 
-    // 4. Mașina de Stări (FSM)
     switch (regimCurent) {
         case INAINTE:
             executaMiscare(vitezaGlobala, 0, vitezaGlobala, 0); 
@@ -97,29 +95,27 @@ void loop() {
             break;
 
         case TURN_L: 
-            // Curbă 90 grade stânga (Roata Dreapta 100%, Roata Stânga 15%)
             executaMiscare(vitezaGlobala, 0, (int)(vitezaGlobala * COEFICIENT_CURBA), 0);
             if (millis() - timerSpecial > DURATA_90_CURBA) regimCurent = STAI;
             break;
 
         case TURN_R: 
-            // Curbă 90 grade dreapta (Roata Stânga 100%, Roata Dreapta 15%)
             executaMiscare((int)(vitezaGlobala * COEFICIENT_CURBA), 0, vitezaGlobala, 0);
             if (millis() - timerSpecial > DURATA_90_CURBA) regimCurent = STAI;
             break;
 
         case TRACKING:
             if (distanta_reala > 0 && distanta_reala < 8) {
-                executaMiscare(0, 200, 0, 200); // Prea aproape -> Retragere
+                executaMiscare(0, 200, 0, 200); 
             } 
             else if (distanta_reala >= 8 && distanta_reala <= 16) {
-                stopMotoare(); // Zonă OK -> Stop
+                stopMotoare();
             } 
             else if (distanta_reala > 16 && distanta_reala <= 50) {
-                executaMiscare(200, 0, 200, 0); // Prea departe -> Urmărire
+                executaMiscare(200, 0, 200, 0);
             } 
             else {
-                stopMotoare(); // Obiect pierdut
+                stopMotoare();
             }
             break;
 
@@ -133,7 +129,6 @@ void proceseazaTasta(char tasta) {
     stop_de_urgenta = false;
     digitalWrite(LED, LOW);
 
-    // Pornim timer-ul doar pentru manevrele de viraj temporizate
     if (tasta == 'a' || tasta == 'A' || tasta == 'd' || tasta == 'D') {
         timerSpecial = millis();
     }
@@ -162,7 +157,6 @@ void proceseazaTasta(char tasta) {
 }
 
 void executaMiscare(int vr_f, int vr_b, int vl_f, int vl_b) {
-    // Excepție: Tracking-ul ignoră stop_de_urgenta hardware deoarece își gestionează singur distanța
     if (regimCurent != TRACKING) {
         if (stop_de_urgenta && (vr_f > 0 || vl_f > 0)) {
             stopMotoare();
